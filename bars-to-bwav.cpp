@@ -120,27 +120,35 @@ int main(int argc, char const *argv[])
                if(VERBOSE) cout << "Found BWAV at offset 0x" << hex << i <<endl;
             }
 
+            /**
+             * NorthWestWind's note:
+             * the idea is to read backwards from 2nd AMTA and/or BWAV
+             */
             //Hex representation of BARS's AMTA header start (AMTA: 0x41 0x4D 0x54 0x41)
             if(fBuf[i] == 0x41 && fBuf[i+1] == 0x4D && fBuf[i+2] == 0x54 && fBuf[i+3] == 0x41){
+                if (VERBOSE) cout << "Found AMTA tag at offset 0x" << hex << i << endl;
                 //matched AMTA, send to file names
                 streamsize nameLen = 0;
-                streamoff nameStart = i+0x48;//start of name string offset +0x48 after start of AMTA tag (possibly after a padding)
-                if(fBuf[nameStart] == 0x01){
-                    //start is 0x01, skip padding (or something else) of 0x8 to the actual file name
-                    nameStart += 0x8;
-                    /* for(; nameStart < barsSize; nameStart++){
-                        if(fBuf[nameStart] != '\0') break; // start of name, not null
-                    } */
-                }
-                //go to file name end
-                for(streamoff j = nameStart; j < barsSize; j++, nameLen++){
-                    // cout << "CHAR:[" << fBuf[j] << "]. Int: " << int(fBuf[j]) << endl;
-                    if(fBuf[j] == -0x3e){ // some files needs to move start idx forward if -c2 is present, inconsistent
-                        // cout << "FOUND -3e" << endl; // c2 in signed byte is -3e
-                        nameStart = j + 1;
-                        nameLen = -1; // so it's 0 when the next iteration begins
+                streamoff nameStart;
+                // go to end of AMTA
+                for (streamoff j = i + 4; j < barsSize - 4; j += 4) {
+                    // find next tag
+                    if (fBuf[j] == 0x41 && fBuf[j+1] == 0x4D && fBuf[j+2] == 0x54 && fBuf[j+3] == 0x41 || // AMTA
+                        fBuf[j] == 0x42 && fBuf[j+1] == 0x57 && fBuf[j+2] == 0x41 && fBuf[j+3] == 0x56) { // BWAV
+                        if (VERBOSE) cout << "Found next tag at offset 0x" << hex << j <<endl;
+                        // now read backwards
+                        bool foundName = false;
+                        streamoff k = j-1;
+                        while (fBuf[k] != '\0' || !foundName) {
+                            if (fBuf[k] != '\0') {
+                                nameStart = k;
+                                nameLen++;
+                                foundName = true;
+                            }
+                            k--;
+                        }
+                        break;
                     }
-                    if(fBuf[j] == '\0') break; // end of name, null
                 }
                 string name = string(fBuf.begin() + nameStart, fBuf.begin() + nameStart + nameLen);
                 if(find(audioNames.begin(),audioNames.end(), name) != audioNames.end()){//already exists
@@ -152,7 +160,7 @@ int main(int argc, char const *argv[])
                     name += '-' + to_string(repeatCounter);
                 }
                 audioNames.push_back(name);
-                if(VERBOSE) cout << "Found AMTA tag at offset 0x" << hex << i << " Name: " << name << endl;
+                if (VERBOSE) cout << "Name: " << name << endl;
             }
         }
 
